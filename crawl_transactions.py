@@ -1,3 +1,4 @@
+import json
 import re
 import smtplib
 import os
@@ -7,6 +8,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
+
+SENT_FILE = "sent_transactions.json"
 
 # 트랜잭션 유형 분류 패턴 (순서 중요 - 먼저 매칭되는 것이 우선)
 TRANSACTION_TYPES = [
@@ -36,16 +39,23 @@ def classify_transaction(text):
     return "Other"
 
 
-def crawl_mlb_transactions():
-    """MLB 트랜잭션 크롤링 (KST 기준 하루 전 날짜)"""
-    kst = timezone(timedelta(hours=9))
-    now_kst = datetime.now(kst)
-    yesterday_kst = now_kst - timedelta(days=1)
-    date_str = yesterday_kst.strftime("%Y/%m/%d")
-    date_display = yesterday_kst.strftime("%Y-%m-%d")
+def load_sent():
+    if os.path.exists(SENT_FILE):
+        with open(SENT_FILE) as f:
+            return set(json.load(f))
+    return set()
 
+
+def save_sent(sent_set):
+    with open(SENT_FILE, "w") as f:
+        json.dump(sorted(sent_set), f, ensure_ascii=False, indent=2)
+
+
+def crawl_mlb_date(date):
+    """특정 날짜의 MLB 트랜잭션 크롤링"""
+    date_str = date.strftime("%Y/%m/%d")
     url = f"https://www.mlb.com/transactions/{date_str}"
-    print(f"크롤링 URL: {url}")
+    print(f"크롤링: {url}")
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -54,17 +64,12 @@ def crawl_mlb_transactions():
     }
 
     response = requests.get(url, headers=headers)
-
     if response.status_code != 200:
-        print(f"요청 실패: 상태 코드 {response.status_code}")
-        return [], date_display
+        print(f"  요청 실패: {response.status_code}")
+        return []
 
     soup = BeautifulSoup(response.text, "html.parser")
     descriptions = soup.select("table.roster__table td.description")
-
-    if not descriptions:
-        print("트랜잭션 데이터를 찾을 수 없습니다.")
-        return [], date_display
 
     transactions = []
     for desc in descriptions:
@@ -72,18 +77,29 @@ def crawl_mlb_transactions():
         tx_type = classify_transaction(text)
         transactions.append({"type": tx_type, "description": text})
 
-    print(f"총 {len(transactions)}건 크롤링 완료")
-    return transactions, date_display
+    print(f"  {len(transactions)}건")
+    return transactions
 
 
-def build_email_body(transactions, date_display):
-    """이메일 본문 생성 (HTML) - 유형별로 구분, 깔끔한 보고서 스타일"""
-    # 유형별 그룹핑
+def crawl_mlb_transactions():
+    """최근 2일치 트랜잭션 크롤링 (KST 기준)"""
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+
+    all_transactions = []
+    for days_ago in [2, 1]:
+        target = now_kst - timedelta(days=days_ago)
+        all_transactions.extend(crawl_mlb_date(target))
+
+    return all_transactions
+
+
+def build_email_body(transactions):
+    """이메일 본문 생성 (HTML) - 유형별로 구분"""
     grouped = {}
     for t in transactions:
         grouped.setdefault(t["type"], []).append(t)
 
-    # 유형 표시 순서 (중요도순)
     type_order = [
         "Trade", "DFA", "Waiver Claim", "Released", "Signed (FA)",
         "Selected Contract", "Recalled", "Optioned",
@@ -91,7 +107,9 @@ def build_email_body(transactions, date_display):
         "Rehab Assignment", "Sent Outright", "Other",
     ]
 
-    # HTML 이메일 본문
+    kst = timezone(timedelta(hours=9))
+    today = datetime.now(kst).strftime("%Y-%m-%d")
+
     html = f"""
     <html>
     <head>
@@ -116,7 +134,7 @@ def build_email_body(transactions, date_display):
     </head>
     <body>
         <h1>MLB Transactions Report</h1>
-        <p class="meta">{date_display} | Total {len(transactions)} transactions</p>
+        <p class="meta">{today} | {len(transactions)} new transactions</p>
 
         <table class="summary-table">
     """
@@ -127,7 +145,6 @@ def build_email_body(transactions, date_display):
 
     html += "</table>"
 
-    # 유형별 섹션
     for tx_type in type_order:
         if tx_type not in grouped:
             continue
@@ -165,8 +182,7 @@ def send_email(subject, html_body):
     recipient = os.environ.get("RECIPIENT_EMAIL")
 
     if not all([gmail_address, gmail_password, recipient]):
-        print("[ERROR] 환경변수가 설정되지 않았습니다:")
-        print("  GMAIL_ADDRESS, GMAIL_APP_PASSWORD, RECIPIENT_EMAIL")
+        print("[ERROR] 환경변수 미설정: GMAIL_ADDRESS, GMAIL_APP_PASSWORD, RECIPIENT_EMAIL")
         return False
 
     recipients = [r.strip() for r in recipient.split(",")]
@@ -189,24 +205,37 @@ def send_email(subject, html_body):
 
 
 def main():
-    transactions, date_display = crawl_mlb_transactions()
+    # 1. 최근 2일치 크롤링
+    all_transactions = crawl_mlb_transactions()
 
-    if not transactions:
-        subject = f"MLB Transactions ({date_display}) - No Data"
-        html_body = f"<p>No transactions recorded on {date_display}.</p>"
-    else:
-        subject = f"MLB Transactions ({date_display}) - {len(transactions)} moves"
-        html_body = build_email_body(transactions, date_display)
+    # 2. 이미 보낸 건 제외
+    sent = load_sent()
+    new_transactions = [t for t in all_transactions if t["description"] not in sent]
 
-    # 환경변수가 있으면 이메일 발송, 없으면 콘솔 출력
+    print(f"\n전체 {len(all_transactions)}건 중 신규 {len(new_transactions)}건")
+
+    if not new_transactions:
+        print("새 트랜잭션 없음. 이메일 미발송.")
+        return
+
+    # 3. 이메일 발송
+    kst = timezone(timedelta(hours=9))
+    today = datetime.now(kst).strftime("%Y-%m-%d")
+    subject = f"MLB Transactions ({today}) - {len(new_transactions)} moves"
+    html_body = build_email_body(new_transactions)
+
     if os.environ.get("GMAIL_ADDRESS"):
         send_email(subject, html_body)
     else:
-        print("\n[이메일 미발송 - 환경변수 미설정, 콘솔 출력 모드]")
-        print(f"\n제목: {subject}")
-        print(f"\n총 {len(transactions)}건")
-        for i, t in enumerate(transactions, 1):
+        print(f"\n[콘솔 출력 모드]")
+        print(f"제목: {subject}\n")
+        for i, t in enumerate(new_transactions, 1):
             print(f"  {i}. [{t['type']}] {t['description']}")
+
+    # 4. 보낸 기록 업데이트
+    for t in new_transactions:
+        sent.add(t["description"])
+    save_sent(sent)
 
 
 if __name__ == "__main__":
