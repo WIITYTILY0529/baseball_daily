@@ -5,7 +5,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # 트랜잭션 유형 분류 패턴 (순서 중요 - 먼저 매칭되는 것이 우선)
@@ -37,10 +37,12 @@ def classify_transaction(text):
 
 
 def crawl_mlb_transactions():
-    """MLB 트랜잭션 크롤링 (하루 전 날짜)"""
-    yesterday = datetime.now() - timedelta(days=1)
-    date_str = yesterday.strftime("%Y/%m/%d")
-    date_display = yesterday.strftime("%Y-%m-%d")
+    """MLB 트랜잭션 크롤링 (KST 기준 하루 전 날짜)"""
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    yesterday_kst = now_kst - timedelta(days=1)
+    date_str = yesterday_kst.strftime("%Y/%m/%d")
+    date_display = yesterday_kst.strftime("%Y-%m-%d")
 
     url = f"https://www.mlb.com/transactions/{date_str}"
     print(f"크롤링 URL: {url}")
