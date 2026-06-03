@@ -230,17 +230,19 @@ def send_email(subject, html_body):
         print("[ERROR] 환경변수 미설정: GMAIL_ADDRESS, GMAIL_APP_PASSWORD, RECIPIENT_EMAIL")
         return False
 
+    recipients = [r.strip() for r in recipient.split(",")]
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = gmail_address
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html_body, "html"))
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail_address, gmail_password)
-            server.sendmail(gmail_address, recipient, msg.as_string())
-        print(f"[OK] 이메일 발송 완료 -> {recipient}")
+            server.sendmail(gmail_address, recipients, msg.as_string())
+        print(f"[OK] 이메일 발송 완료 -> {recipients}")
         return True
     except Exception as e:
         print(f"[FAIL] 이메일 발송 실패: {e}")
