@@ -75,7 +75,7 @@ def crawl_mlb_transactions():
 
 
 def build_email_body(transactions, date_display):
-    """이메일 본문 생성 (HTML) - 유형별로 구분"""
+    """이메일 본문 생성 (HTML) - 유형별로 구분, 깔끔한 보고서 스타일"""
     # 유형별 그룹핑
     grouped = {}
     for t in transactions:
@@ -89,73 +89,51 @@ def build_email_body(transactions, date_display):
         "Rehab Assignment", "Sent Outright", "Other",
     ]
 
-    type_class_map = {
-        "Trade": "trade", "DFA": "dfa", "Released": "dfa",
-        "Signed (FA)": "signed", "Waiver Claim": "signed",
-        "Placed on IL": "il", "Activated from IL": "il",
-        "Activated": "il", "Transferred IL": "il",
-        "Optioned": "roster", "Recalled": "roster", "Selected Contract": "roster",
-        "Rehab Assignment": "rehab", "Sent Outright": "roster",
-    }
-
-    type_emoji = {
-        "Trade": "🔄", "DFA": "⚠️", "Waiver Claim": "📋", "Released": "🚪",
-        "Signed (FA)": "✍️", "Selected Contract": "📢", "Recalled": "⬆️",
-        "Optioned": "⬇️", "Placed on IL": "🏥", "Activated from IL": "💪",
-        "Activated": "✅", "Transferred IL": "🔀",
-        "Rehab Assignment": "🔧", "Sent Outright": "📤", "Other": "❓",
-    }
-
     # HTML 이메일 본문
     html = f"""
     <html>
     <head>
         <style>
-            body {{ font-family: -apple-system, sans-serif; padding: 20px; color: #333; }}
-            h1 {{ color: #002D72; border-bottom: 3px solid #E31937; padding-bottom: 10px; }}
-            h2 {{ color: #002D72; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }}
-            .summary {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 15px 0; }}
-            .summary span {{ display: inline-block; margin: 4px 8px; padding: 4px 12px;
-                            background: #002D72; color: white; border-radius: 12px; font-size: 13px; }}
-            .section {{ margin-bottom: 25px; }}
-            ul {{ padding-left: 20px; }}
-            li {{ padding: 4px 0; font-size: 14px; line-height: 1.6; }}
-            .type-badge {{ display: inline-block; padding: 3px 10px; border-radius: 4px;
-                          font-size: 12px; font-weight: bold; color: white; margin-right: 6px; }}
-            .trade {{ background: #E31937; }}
-            .dfa {{ background: #FF6B35; }}
-            .signed {{ background: #28a745; }}
-            .il {{ background: #6c757d; }}
-            .roster {{ background: #007bff; }}
-            .rehab {{ background: #17a2b8; }}
-            .other {{ background: #999; }}
+            body {{ font-family: -apple-system, Arial, sans-serif; padding: 24px; color: #1a1a1a;
+                   max-width: 700px; margin: 0 auto; line-height: 1.5; }}
+            h1 {{ font-size: 20px; color: #1a1a1a; border-bottom: 2px solid #002D72;
+                 padding-bottom: 8px; margin-bottom: 16px; font-weight: 600; }}
+            h2 {{ font-size: 15px; color: #002D72; margin: 24px 0 8px 0;
+                 padding-bottom: 4px; border-bottom: 1px solid #e0e0e0; font-weight: 600; }}
+            .meta {{ font-size: 13px; color: #555; margin-bottom: 20px; }}
+            .summary-table {{ width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; }}
+            .summary-table td {{ padding: 5px 12px; font-size: 13px; }}
+            .summary-table td:first-child {{ font-weight: 600; color: #333; }}
+            .summary-table td:last-child {{ text-align: right; color: #555; }}
+            .section {{ margin-bottom: 20px; }}
+            ul {{ padding-left: 18px; margin: 6px 0; }}
+            li {{ padding: 3px 0; font-size: 13px; line-height: 1.6; color: #333; }}
+            .footer {{ margin-top: 30px; padding-top: 12px; border-top: 1px solid #e0e0e0;
+                      font-size: 11px; color: #999; }}
         </style>
     </head>
     <body>
-        <h1>⚾ MLB 트랜잭션 ({date_display})</h1>
-        <p>총 <strong>{len(transactions)}건</strong>의 트랜잭션이 발생했습니다.</p>
+        <h1>MLB Transactions Report</h1>
+        <p class="meta">{date_display} | Total {len(transactions)} transactions</p>
 
-        <div class="summary">
-            <strong>📊 유형별 요약:</strong><br>
+        <table class="summary-table">
     """
 
     for tx_type in type_order:
         if tx_type in grouped:
-            html += f'<span>{type_emoji.get(tx_type, "")} {tx_type}: {len(grouped[tx_type])}건</span>'
+            html += f"<tr><td>{tx_type}</td><td>{len(grouped[tx_type])}</td></tr>"
 
-    html += "</div>"
+    html += "</table>"
 
     # 유형별 섹션
     for tx_type in type_order:
         if tx_type not in grouped:
             continue
         items = grouped[tx_type]
-        css_class = type_class_map.get(tx_type, "other")
-        emoji = type_emoji.get(tx_type, "")
 
         html += f"""
         <div class="section">
-            <h2>{emoji} {tx_type} ({len(items)}건)</h2>
+            <h2>{tx_type} ({len(items)})</h2>
             <ul>
         """
         for t in items:
@@ -168,10 +146,9 @@ def build_email_body(transactions, date_display):
         """
 
     html += """
-        <br>
-        <p style="color: #999; font-size: 12px;">
-            이 메일은 자동으로 발송되었습니다. (MLB Transactions Crawler)
-        </p>
+        <div class="footer">
+            This email was generated automatically. Source: mlb.com/transactions
+        </div>
     </body>
     </html>
     """
@@ -186,8 +163,8 @@ def send_email(subject, html_body):
     recipient = os.environ.get("RECIPIENT_EMAIL")
 
     if not all([gmail_address, gmail_password, recipient]):
-        print("❌ 환경변수가 설정되지 않았습니다:")
-        print("   GMAIL_ADDRESS, GMAIL_APP_PASSWORD, RECIPIENT_EMAIL")
+        print("[ERROR] 환경변수가 설정되지 않았습니다:")
+        print("  GMAIL_ADDRESS, GMAIL_APP_PASSWORD, RECIPIENT_EMAIL")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -200,10 +177,10 @@ def send_email(subject, html_body):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail_address, gmail_password)
             server.sendmail(gmail_address, recipient, msg.as_string())
-        print(f"✅ 이메일 발송 완료 → {recipient}")
+        print(f"[OK] 이메일 발송 완료 -> {recipient}")
         return True
     except Exception as e:
-        print(f"❌ 이메일 발송 실패: {e}")
+        print(f"[FAIL] 이메일 발송 실패: {e}")
         return False
 
 
@@ -211,10 +188,10 @@ def main():
     transactions, date_display = crawl_mlb_transactions()
 
     if not transactions:
-        subject = f"⚾ MLB 트랜잭션 ({date_display}) - 데이터 없음"
-        html_body = f"<p>{date_display}에 등록된 트랜잭션이 없습니다.</p>"
+        subject = f"MLB Transactions ({date_display}) - No Data"
+        html_body = f"<p>No transactions recorded on {date_display}.</p>"
     else:
-        subject = f"⚾ MLB 트랜잭션 ({date_display}) - {len(transactions)}건"
+        subject = f"MLB Transactions ({date_display}) - {len(transactions)} moves"
         html_body = build_email_body(transactions, date_display)
 
     # 환경변수가 있으면 이메일 발송, 없으면 콘솔 출력
