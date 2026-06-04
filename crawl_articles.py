@@ -79,12 +79,13 @@ def crawl_bp():
                 continue
 
             title = title_elem.get("title", "").strip()
+            link = title_elem.get("href", "")
             date_text = date_elem.get_text(strip=True)
 
             if not title or not is_recent_date(date_text):
                 continue
 
-            articles.append({"source": "Baseball Prospectus", "title": title, "date": date_text})
+            articles.append({"source": "Baseball Prospectus", "title": title, "link": link, "date": date_text})
 
     except Exception as e:
         print(f"[BP] 에러: {e}")
@@ -121,8 +122,9 @@ def crawl_fangraphs():
                     a_tag = h3.find("a")
                     if a_tag:
                         title = a_tag.get_text(strip=True)
+                        link = a_tag.get("href", "")
                         if title:
-                            articles.append({"source": "Fangraphs", "title": title, "date": date_text})
+                            articles.append({"source": "Fangraphs", "title": title, "link": link, "date": date_text})
                 sibling = sibling.find_next_sibling()
 
     except Exception as e:
@@ -154,13 +156,14 @@ def crawl_driveline():
                 continue
 
             title = title_elem.get_text(strip=True)
+            link = title_elem.get("href", "")
             dt_str = time_elem.get("datetime", "")
             date_display = time_elem.get_text(strip=True)
 
             if not title or not parse_iso_recent(dt_str):
                 continue
 
-            articles.append({"source": "Driveline", "title": title, "date": date_display})
+            articles.append({"source": "Driveline", "title": title, "link": link, "date": date_display})
 
     except Exception as e:
         print(f"[DL] 에러: {e}")
@@ -207,7 +210,10 @@ def build_email_body(articles):
         items = grouped[source]
         html += f"<h2>{source} ({len(items)})</h2><ul>"
         for a in items:
-            html += f'<li>{a["title"]} <span class="date-tag">{a["date"]}</span></li>'
+            if a.get("link"):
+                html += f'<li><a href="{a["link"]}" style="color: #002D72; text-decoration: none;">{a["title"]}</a> <span class="date-tag">{a["date"]}</span></li>'
+            else:
+                html += f'<li>{a["title"]} <span class="date-tag">{a["date"]}</span></li>'
         html += "</ul>"
 
     html += """

@@ -17,16 +17,19 @@ TRANSACTION_TYPES = [
     ("DFA", r"designated .+ for assignment"),
     ("Waiver Claim", r"claimed .+ off waivers"),
     ("Released", r"released"),
+    ("Free Agency", r"elected free agency"),
     ("Signed (FA)", r"signed free agent"),
     ("Selected Contract", r"selected the contract of"),
     ("Optioned", r"optioned"),
     ("Recalled", r"recalled"),
+    ("Returned", r"returned to .+ from"),
     ("Placed on IL", r"placed .+ on the .+ injured list"),
     ("Activated from IL", r"activated .+ from the .+injured list"),
     ("Activated", r"activated .+ from the"),
     ("Transferred IL", r"transferred .+ injured list"),
     ("Rehab Assignment", r"rehab assignment"),
     ("Sent Outright", r"sent .+ outright"),
+    ("Roster Move", r"roster status changed"),
 ]
 
 
@@ -101,10 +104,10 @@ def build_email_body(transactions):
         grouped.setdefault(t["type"], []).append(t)
 
     type_order = [
-        "Trade", "DFA", "Waiver Claim", "Released", "Signed (FA)",
-        "Selected Contract", "Recalled", "Optioned",
+        "Trade", "DFA", "Waiver Claim", "Released", "Free Agency", "Signed (FA)",
+        "Selected Contract", "Recalled", "Optioned", "Returned",
         "Placed on IL", "Activated from IL", "Activated", "Transferred IL",
-        "Rehab Assignment", "Sent Outright", "Other",
+        "Rehab Assignment", "Sent Outright", "Roster Move", "Other",
     ]
 
     kst = timezone(timedelta(hours=9))
