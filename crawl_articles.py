@@ -100,95 +100,42 @@ def crawl_bp():
 
 
 def crawl_fangraphs():
-    """Fangraphs 크롤링 (Playwright 사용 - Cloudflare 우회)"""
-    url = "https://www.fangraphs.com/blog-roll"
+    """Fangraphs 크롤링 (RSS 피드 사용)"""
+    url = "https://blogs.fangraphs.com/feed/"
     articles = []
 
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        print("[FG] playwright 미설치, requests로 시도")
-        return _crawl_fangraphs_requests()
-
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            )
-            page = context.new_page()
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            # Cloudflare challenge 통과 대기
-            try:
-                page.wait_for_selector("h2[class*='section-title']", timeout=15000)
-            except Exception:
-                print("[FG] Cloudflare 통과 실패")
-                browser.close()
-                return _crawl_fangraphs_requests()
-            html = page.content()
-            browser.close()
-
-        soup = BeautifulSoup(html, "html.parser")
-        date_sections = soup.select("h2[class*='section-title']")
-
-        for section in date_sections:
-            date_text = section.get_text(strip=True)
-
-            if not is_recent_date(date_text):
-                continue
-
-            sibling = section.find_next_sibling()
-            while sibling and sibling.name != "h2":
-                headlines = sibling.select("h3[class*='blog-headline']")
-                for h3 in headlines:
-                    a_tag = h3.find("a")
-                    if a_tag:
-                        title = a_tag.get_text(strip=True)
-                        link = a_tag.get("href", "")
-                        if title:
-                            articles.append({"source": "Fangraphs", "title": title, "link": link, "date": date_text})
-                sibling = sibling.find_next_sibling()
-
-    except Exception as e:
-        print(f"[FG] Playwright 에러: {e}, requests로 재시도")
-        return _crawl_fangraphs_requests()
-
-    print(f"[FG] {len(articles)}건 수집")
-    return articles
-
-
-def _crawl_fangraphs_requests():
-    """Fangraphs fallback - requests 사용"""
-    url = "https://www.fangraphs.com/blog-roll"
-    articles = []
-
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
         if resp.status_code != 200:
-            print(f"[FG] requests도 실패: {resp.status_code}")
+            print(f"[FG] RSS 요청 실패: {resp.status_code}")
             return articles
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        date_sections = soup.select("h2[class*='section-title']")
+        soup = BeautifulSoup(resp.text, "xml")
+        items = soup.find_all("item")
 
-        for section in date_sections:
-            date_text = section.get_text(strip=True)
+        today = datetime.now()
+        cutoff = today - timedelta(days=2)
 
-            if not is_recent_date(date_text):
+        for item in items:
+            title_elem = item.find("title")
+            link_elem = item.find("link")
+            pub_elem = item.find("pubDate")
+
+            if not title_elem or not pub_elem:
                 continue
 
-            # 다음 형제 요소들에서 기사 제목 추출 (다음 h2 전까지)
-            sibling = section.find_next_sibling()
-            while sibling and sibling.name != "h2":
-                headlines = sibling.select("h3[class*='blog-headline']")
-                for h3 in headlines:
-                    a_tag = h3.find("a")
-                    if a_tag:
-                        title = a_tag.get_text(strip=True)
-                        link = a_tag.get("href", "")
-                        if title:
-                            articles.append({"source": "Fangraphs", "title": title, "link": link, "date": date_text})
-                sibling = sibling.find_next_sibling()
+            title = title_elem.text.strip()
+            link = link_elem.text.strip() if link_elem else ""
+
+            try:
+                dt = datetime.strptime(pub_elem.text.strip(), "%a, %d %b %Y %H:%M:%S %z")
+                if dt.replace(tzinfo=None) < cutoff:
+                    continue
+                date_display = dt.strftime("%B %d, %Y")
+            except ValueError:
+                continue
+
+            articles.append({"source": "Fangraphs", "title": title, "link": link, "date": date_display})
 
     except Exception as e:
         print(f"[FG] 에러: {e}")
