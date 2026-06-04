@@ -119,7 +119,12 @@ def crawl_fangraphs():
             page = context.new_page()
             page.goto(url, wait_until="networkidle", timeout=30000)
             # Cloudflare challenge 통과 대기
-            page.wait_for_selector("h2[class*='section-title']", timeout=15000)
+            try:
+                page.wait_for_selector("h2[class*='section-title']", timeout=15000)
+            except Exception:
+                print("[FG] Cloudflare 통과 실패")
+                browser.close()
+                return _crawl_fangraphs_requests()
             html = page.content()
             browser.close()
 
