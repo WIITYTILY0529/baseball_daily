@@ -100,14 +100,67 @@ def crawl_bp():
 
 
 def crawl_fangraphs():
-    """Fangraphs 크롤링"""
+    """Fangraphs 크롤링 (Playwright 사용 - Cloudflare 우회)"""
+    url = "https://www.fangraphs.com/blog-roll"
+    articles = []
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("[FG] playwright 미설치, requests로 시도")
+        return _crawl_fangraphs_requests()
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            )
+            page = context.new_page()
+            page.goto(url, wait_until="networkidle", timeout=30000)
+            # Cloudflare challenge 통과 대기
+            page.wait_for_selector("h2[class*='section-title']", timeout=15000)
+            html = page.content()
+            browser.close()
+
+        soup = BeautifulSoup(html, "html.parser")
+        date_sections = soup.select("h2[class*='section-title']")
+
+        for section in date_sections:
+            date_text = section.get_text(strip=True)
+
+            if not is_recent_date(date_text):
+                continue
+
+            sibling = section.find_next_sibling()
+            while sibling and sibling.name != "h2":
+                headlines = sibling.select("h3[class*='blog-headline']")
+                for h3 in headlines:
+                    a_tag = h3.find("a")
+                    if a_tag:
+                        title = a_tag.get_text(strip=True)
+                        link = a_tag.get("href", "")
+                        if title:
+                            articles.append({"source": "Fangraphs", "title": title, "link": link, "date": date_text})
+                sibling = sibling.find_next_sibling()
+
+    except Exception as e:
+        print(f"[FG] Playwright 에러: {e}, requests로 재시도")
+        return _crawl_fangraphs_requests()
+
+    print(f"[FG] {len(articles)}건 수집")
+    return articles
+
+
+def _crawl_fangraphs_requests():
+    """Fangraphs fallback - requests 사용"""
     url = "https://www.fangraphs.com/blog-roll"
     articles = []
 
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
-            print(f"[FG] 요청 실패: {resp.status_code}")
+            print(f"[FG] requests도 실패: {resp.status_code}")
             return articles
 
         soup = BeautifulSoup(resp.text, "html.parser")
