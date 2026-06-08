@@ -23,6 +23,7 @@ TRANSACTION_TYPES = [
     ("Optioned", r"optioned"),
     ("Recalled", r"recalled"),
     ("Returned", r"returned to .+ from"),
+    ("Obtained", r"obtain"),
     ("Placed on IL", r"placed .+ on the .+ injured list"),
     ("Activated", r"activated"),
     ("Transferred IL", r"transferred .+ injured list"),
@@ -104,7 +105,7 @@ def build_email_body(transactions):
 
     type_order = [
         "Trade", "DFA", "Waiver Claim", "Released", "Free Agency", "Signed (FA)",
-        "Selected Contract", "Recalled", "Optioned", "Returned",
+        "Selected Contract", "Recalled", "Optioned", "Returned", "Obtained",
         "Placed on IL", "Activated", "Transferred IL",
         "Rehab Assignment", "Sent Outright", "Roster Move", "Other",
     ]
