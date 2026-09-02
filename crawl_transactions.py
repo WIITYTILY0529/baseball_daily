@@ -197,7 +197,7 @@ def send_email(subject, html_body):
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(gmail_address, gmail_password)
             server.sendmail(gmail_address, recipients, msg.as_string())
         print(f"[OK] 이메일 발송 완료 -> {recipients}")
@@ -227,15 +227,11 @@ def main():
     subject = f"MLB Transactions ({today}) - {len(new_transactions)} moves"
     html_body = build_email_body(new_transactions)
 
-    if os.environ.get("GMAIL_ADDRESS"):
-        send_email(subject, html_body)
-    else:
-        print(f"\n[콘솔 출력 모드]")
-        print(f"제목: {subject}\n")
-        for i, t in enumerate(new_transactions, 1):
-            print(f"  {i}. [{t['type']}] {t['description']}")
+    if not send_email(subject, html_body):
+        print("[ERROR] 이메일 발송 실패. 발송 기록을 업데이트하지 않습니다.")
+        return
 
-    # 4. 보낸 기록 업데이트
+    # 4. 이메일 발송에 성공한 트랜잭션만 기록 업데이트
     for t in new_transactions:
         sent.add(t["description"])
     save_sent(sent)

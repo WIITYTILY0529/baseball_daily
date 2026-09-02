@@ -17,7 +17,8 @@ HEADERS = {
                   "Chrome/125.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    # requests 환경에 brotli 디코더가 없을 수 있으므로 br은 요청하지 않는다.
+    "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
 }
@@ -145,32 +146,44 @@ def crawl_fangraphs():
 
 
 def crawl_driveline():
-    """Driveline Baseball 크롤링"""
-    url = "https://www.drivelinebaseball.com/blog/"
+    """Driveline Baseball의 현재 목록 페이지에 노출된 글을 수집"""
+    url = "https://drivelinebaseball.com/blogs/blog"
     articles = []
 
+    # Driveline(Shopify)은 Accept-Encoding에 br 포함 시 brotli 응답을 보내는데
+    # requests가 디코딩 못하므로 별도 헤더 사용
+    dl_headers = {
+        "User-Agent": HEADERS["User-Agent"],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp = requests.get(url, headers=dl_headers, timeout=15)
         if resp.status_code != 200:
             print(f"[DL] 요청 실패: {resp.status_code}")
             return articles
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        posts = soup.select(".slider-post__header")
+        posts = soup.select("article.article")
 
         for post in posts:
-            title_elem = post.select_one(".slider-post__title a")
-            time_elem = post.select_one("time.entry-date")
+            title_elem = post.select_one("h2 a")
+            time_elem = post.select_one("time")
 
-            if not title_elem or not time_elem:
+            if not title_elem:
                 continue
 
             title = title_elem.get_text(strip=True)
             link = title_elem.get("href", "")
-            dt_str = time_elem.get("datetime", "")
-            date_display = time_elem.get_text(strip=True)
+            if link and not link.startswith("http"):
+                link = "https://drivelinebaseball.com" + link
 
-            if not title or not parse_iso_recent(dt_str):
+            # 날짜 처리: time 태그의 텍스트 사용 (예: "July 23, 2026")
+            date_display = time_elem.get_text(strip=True) if time_elem else ""
+
+            # 발행 간격이 길 수 있으므로 날짜로 제외하지 않고 발송 기록으로 중복 제거
+            if not title:
                 continue
 
             articles.append({"source": "Driveline", "title": title, "link": link, "date": date_display})
@@ -255,7 +268,7 @@ def send_email(subject, html_body):
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(gmail_address, gmail_password)
             server.sendmail(gmail_address, recipients, msg.as_string())
         print(f"[OK] 이메일 발송 완료 -> {recipients}")
@@ -287,15 +300,11 @@ def main():
     subject = f"Baseball Articles ({today}) - {len(new_articles)} new"
     html_body = build_email_body(new_articles)
 
-    if os.environ.get("GMAIL_ADDRESS"):
-        send_email(subject, html_body)
-    else:
-        print(f"\n[콘솔 출력 모드]")
-        print(f"제목: {subject}\n")
-        for a in new_articles:
-            print(f"  [{a['source']}] {a['title']} ({a['date']})")
+    if not send_email(subject, html_body):
+        print("[ERROR] 이메일 발송 실패. 발송 기록을 업데이트하지 않습니다.")
+        return
 
-    # 4. 보낸 기사 기록 업데이트
+    # 4. 이메일 발송에 성공한 기사만 기록 업데이트
     for a in new_articles:
         sent.add(a["title"])
     save_sent(sent)
