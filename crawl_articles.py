@@ -4,12 +4,13 @@ import smtplib
 import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 from bs4 import BeautifulSoup
 
 SENT_FILE = "sent_articles.json"
+KST = timezone(timedelta(hours=9))
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -37,15 +38,14 @@ def save_sent(sent_set):
 
 
 def is_recent_date(date_text, days=2):
-    """날짜 텍스트가 최근 N일 이내인지 확인"""
-    today = datetime.now()
-    cutoff = today - timedelta(days=days)
+    """날짜 텍스트가 KST 기준 최근 N일 범위인지 확인"""
+    cutoff_date = datetime.now(KST).date() - timedelta(days=days)
 
     # "June 02, 2026" or "June 1, 2026" 형식
     for fmt in ("%B %d, %Y", "%B %d,%Y"):
         try:
-            dt = datetime.strptime(date_text.strip(), fmt)
-            return dt >= cutoff
+            published_date = datetime.strptime(date_text.strip(), fmt).date()
+            return published_date >= cutoff_date
         except ValueError:
             continue
     return False
@@ -114,8 +114,7 @@ def crawl_fangraphs():
         soup = BeautifulSoup(resp.text, "xml")
         items = soup.find_all("item")
 
-        today = datetime.now()
-        cutoff = today - timedelta(days=2)
+        cutoff_date = datetime.now(KST).date() - timedelta(days=2)
 
         for item in items:
             title_elem = item.find("title")
@@ -130,9 +129,10 @@ def crawl_fangraphs():
 
             try:
                 dt = datetime.strptime(pub_elem.text.strip(), "%a, %d %b %Y %H:%M:%S %z")
-                if dt.replace(tzinfo=None) < cutoff:
+                dt_kst = dt.astimezone(KST)
+                if dt_kst.date() < cutoff_date:
                     continue
-                date_display = dt.strftime("%B %d, %Y")
+                date_display = dt_kst.strftime("%B %d, %Y")
             except ValueError:
                 continue
 
