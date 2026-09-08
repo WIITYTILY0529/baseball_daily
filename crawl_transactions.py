@@ -97,7 +97,7 @@ def crawl_mlb_transactions():
     return all_transactions
 
 
-def build_email_body(transactions):
+def build_email_body(transactions, checked_count=None):
     """이메일 본문 생성 (HTML) - 유형별로 구분"""
     grouped = {}
     for t in transactions:
@@ -131,6 +131,8 @@ def build_email_body(transactions):
             .section {{ margin-bottom: 20px; }}
             ul {{ padding-left: 18px; margin: 6px 0; }}
             li {{ padding: 3px 0; font-size: 13px; line-height: 1.6; color: #333; }}
+            .empty-state {{ padding: 18px; background: #f5f7fa; border-radius: 6px;
+                            font-size: 13px; color: #444; }}
             .footer {{ margin-top: 30px; padding-top: 12px; border-top: 1px solid #e0e0e0;
                       font-size: 11px; color: #999; }}
         </style>
@@ -147,6 +149,14 @@ def build_email_body(transactions):
             html += f"<tr><td>{tx_type}</td><td>{len(grouped[tx_type])}</td></tr>"
 
     html += "</table>"
+
+    if not transactions:
+        html += f"""
+        <div class="empty-state">
+            <strong>No new transactions today.</strong><br>
+            The crawler checked {checked_count or 0} transactions, but all of them were already sent or no move was posted.
+        </div>
+        """
 
     for tx_type in type_order:
         if tx_type not in grouped:
@@ -218,7 +228,12 @@ def main():
     print(f"\n전체 {len(all_transactions)}건 중 신규 {len(new_transactions)}건")
 
     if not new_transactions:
-        print("새 트랜잭션 없음. 이메일 미발송.")
+        kst = timezone(timedelta(hours=9))
+        today = datetime.now(kst).strftime("%Y-%m-%d")
+        subject = f"MLB Transactions ({today}) - No new moves"
+        html_body = build_email_body([], checked_count=len(all_transactions))
+        if send_email(subject, html_body):
+            print("새 트랜잭션 없음 안내 이메일 발송 완료.")
         return
 
     # 3. 이메일 발송

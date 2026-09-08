@@ -195,13 +195,13 @@ def crawl_driveline():
     return articles
 
 
-def build_email_body(articles):
+def build_email_body(articles, source_counts=None):
     """이메일 본문 생성 - 소스별 구분"""
     grouped = {}
     for a in articles:
         grouped.setdefault(a["source"], []).append(a)
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(KST).strftime("%Y-%m-%d")
 
     html = f"""
     <html>
@@ -217,6 +217,11 @@ def build_email_body(articles):
             ul {{ padding-left: 18px; margin: 6px 0; }}
             li {{ padding: 4px 0; font-size: 13px; line-height: 1.6; color: #333; }}
             .date-tag {{ font-size: 11px; color: #888; margin-left: 6px; }}
+            .empty-state {{ padding: 18px; background: #f5f7fa; border-radius: 6px;
+                            font-size: 13px; color: #444; }}
+            .empty-state table {{ width: 100%; margin-top: 12px; border-collapse: collapse; }}
+            .empty-state td {{ padding: 4px 0; }}
+            .empty-state td:last-child {{ text-align: right; font-weight: 600; }}
             .footer {{ margin-top: 30px; padding-top: 12px; border-top: 1px solid #e0e0e0;
                       font-size: 11px; color: #999; }}
         </style>
@@ -227,6 +232,18 @@ def build_email_body(articles):
     """
 
     source_order = ["Baseball Prospectus", "Fangraphs", "Driveline"]
+    if not articles:
+        counts = source_counts or {}
+        html += """
+        <div class="empty-state">
+            <strong>No new articles today.</strong><br>
+            The crawler completed, but every collected article was already sent or no article was published.
+            <table>
+        """
+        for source in source_order:
+            html += f"<tr><td>{source}</td><td>{counts.get(source, 0)} collected</td></tr>"
+        html += "</table></div>"
+
     for source in source_order:
         if source not in grouped:
             continue
@@ -292,11 +309,19 @@ def main():
     print(f"\n전체 {len(all_articles)}건 중 신규 {len(new_articles)}건")
 
     if not new_articles:
-        print("새 기사 없음. 이메일 미발송.")
+        source_counts = {
+            source: sum(a["source"] == source for a in all_articles)
+            for source in ["Baseball Prospectus", "Fangraphs", "Driveline"]
+        }
+        today = datetime.now(KST).strftime("%Y-%m-%d")
+        subject = f"Baseball Articles ({today}) - No new articles"
+        html_body = build_email_body([], source_counts)
+        if send_email(subject, html_body):
+            print("새 기사 없음 안내 이메일 발송 완료.")
         return
 
     # 3. 이메일 발송
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(KST).strftime("%Y-%m-%d")
     subject = f"Baseball Articles ({today}) - {len(new_articles)} new"
     html_body = build_email_body(new_articles)
 
